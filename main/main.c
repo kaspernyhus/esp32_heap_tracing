@@ -7,9 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#define LOOP 10
 #define SIZE 1000
 
-static const char* TAG = "HEAP TRACE EXAMPLE";
+static const char* TAG = "HEAP-TRACE-EXAMPLE";
 
 int i = 0;
 int leaked = 0;
@@ -25,6 +26,10 @@ static void print_heap_info(char* tag)
     printf("%s", "===================================================================\n");
 }
 
+/**
+ * Leaks (LOOP/2)*SIZE bytes before waiting forever so that trace can be stopped
+ *
+ */
 void app_main(void)
 {
     ESP_ERROR_CHECK(heap_trace_init_tohost());
@@ -33,11 +38,11 @@ void app_main(void)
 
     ESP_ERROR_CHECK(heap_trace_start(HEAP_TRACE_ALL));
 
-    while (i < 10) {
+    while (i < LOOP) {
         uint8_t* p = (uint8_t*)malloc(SIZE * sizeof(uint8_t));
         memset(p, 0x23, SIZE);
-        print_heap_info("status");
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        print_heap_info("STATUS");
+        vTaskDelay(pdMS_TO_TICKS(1000));
         i++;
         if (i % 2 == 0) {
             ESP_LOGI(TAG, "free");
@@ -47,7 +52,7 @@ void app_main(void)
         }
     }
 
-    ESP_LOGE(TAG, "DONE: i = %d // leaked: %d", i, leaked);
+    ESP_LOGE(TAG, "DONE! Leaked: %d bytes", leaked);
 
     // Wait forever
     while (1) {
