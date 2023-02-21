@@ -76,11 +76,27 @@ static void example_task(void* pvparams)
          */
         size = (esp_random() % 1000);
         void* ptr = malloc(size);
-        if (ptr == NULL) {
+        if (ptr != NULL) {
+            if (size < 500) {
+                free(ptr);
+            }
+        } else {
             ESP_LOGE(TAG, "Could not allocate heap memory");
-            abort();
         }
+
         vTaskDelay(pdMS_TO_TICKS(2000 + size));
+    }
+}
+
+static void waiting_task(void* pvParam)
+{
+    ESP_LOGI(TAG, "Just waiting...");
+
+    int* ptr = (int*)malloc(sizeof(int) * 16);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        ESP_LOGI(TAG, "Still waiting... %d", *ptr);
     }
 }
 
@@ -89,7 +105,6 @@ static void heap_tracking_task(void* pvparams)
     while (1) {
         vTaskDelay(2000);
         esp_dump_per_task_heap_info();
-        // print_heap_info("tracking task");
     }
 }
 
@@ -97,9 +112,12 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "===== APP_MAIN =====");
 
-    xTaskCreatePinnedToCore(example_task, "example_task1", 4096, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(example_task, "example_task1", 926, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(example_task, "example_task2", 4096, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(example_task, "example_task3", 8192, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(example_task, "example_task4", 4096, NULL, 7, NULL, 0);
+    xTaskCreatePinnedToCore(waiting_task, "waiting_task", 4096, NULL, 5, NULL, 0);
+
     xTaskCreatePinnedToCore(heap_tracking_task, "heap_tracking_task", 8192, NULL, 5, NULL, 1);
 
     vTaskSuspend(NULL);
