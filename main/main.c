@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,6 +23,23 @@ int leaked = 0;
 static size_t s_prepopulated_num = 0;
 static heap_task_totals_t s_totals_arr[MAX_TASK_NUM];
 static heap_task_block_t s_block_arr[MAX_BLOCK_NUM];
+static TaskStatus_t task_status[MAX_TASK_NUM];
+
+static void esp_dump_per_task_stack_info(void)
+{
+    uint32_t runtime = 0;
+    UBaseType_t num_tasks = uxTaskGetSystemState(task_status, MAX_TASK_NUM, &runtime);
+
+    printf("\n----------------------------------------------------------\n");
+    printf(" Task info for %d tasks\n", num_tasks);
+    printf("----------------------------------------------------------\n");
+    printf("||  Task name\t\t| Core | Priority | Stack left  ||\n");
+    printf("----------------------------------------------------------\n");
+    for (int i = 0; i < num_tasks; i++) {
+        printf("|| %-16s\t| %-4d | %-8d | %-5d\t||\n", task_status[i].pcTaskName, task_status[i].xCoreID, task_status[i].uxBasePriority, task_status[i].usStackHighWaterMark);
+    }
+    printf("----------------------------------------------------------\n\n");
+}
 
 static void esp_dump_per_task_heap_info(void)
 {
@@ -39,37 +57,34 @@ static void esp_dump_per_task_heap_info(void)
     heap_info.max_blocks = MAX_BLOCK_NUM; // Maximum length of "s_block_arr"
     heap_caps_get_per_task_info(&heap_info);
 
-    printf("\n--------------------------------------------------------------------------\n");
-    printf(" Task info for %d tasks", *heap_info.num_totals);
-    printf("\n--------------------------------------------------------------------------\n");
-    printf("|| Task name\t\t| 8BIT \tHeap allocated  32BIT   | Stack left\t||\n");
-    printf("--------------------------------------------------------------------------\n");
-
+    printf("\n----------------------------------------------------------\n");
+    printf(" Heap allocation info for %d tasks", *heap_info.num_totals);
+    printf("\n----------------------------------------------------------\n");
+    printf("|| Task name\t\t| CAP_8BIT \t| CAP_32BIT\t||\n");
+    printf("----------------------------------------------------------\n");
     for (int i = 0; i < *heap_info.num_totals; i++) {
         const char* task_name = heap_info.totals[i].task ? pcTaskGetTaskName(heap_info.totals[i].task) : "Pre-Sched allocs";
-
-        // returns the minimum amount of remaining stack space - that is the amount of stack that remained unused when the task stack was at its greatest (deepest) value.
-        int task_HWM = uxTaskGetStackHighWaterMark(heap_info.totals[i].task);
-        // int task_HWM = 0;
-
-        printf("|| %-16s\t| %-5d\t\t| %-8d\t| %-9d\t||\n", task_name, heap_info.totals[i].size[0], heap_info.totals[i].size[1], task_HWM);
+        printf("|| %-16s\t| %-5d\t\t| %-8d\t||\n", task_name, heap_info.totals[i].size[0], heap_info.totals[i].size[1]);
     }
+    printf("----------------------------------------------------------\n\n");
+}
 
-    const size_t free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+static void esp_dump_system_heap_info(void)
+{
+    const size_t total_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     const int min_free_8bit_cap = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    const size_t total = heap_caps_get_total_size(MALLOC_CAP_8BIT);
-    printf("--------------------------------------------------------------------------\n");
-    printf("System Memory Utilisation Stats:\n");
-    printf("----------------------------------------------------------\n");
+    const size_t total_available = heap_caps_get_total_size(MALLOC_CAP_8BIT);
+
+    printf("\n----------------------------------------------------------\n");
     printf("||  Free Memory\t\t\t|  Low Watermark\t||\n");
-    printf("||  %-6d/%d %.2f%% used\t|  %-6d %.2f%% left   ||\n", free, total, 100.0 - ((float)free / total * 100), min_free_8bit_cap, (float)min_free_8bit_cap / total * 100);
+    printf("----------------------------------------------------------\n");
+    printf("||  %-6d/%d %.2f%% used\t|  %-6d %.2f%% left   ||\n", total_free, total_available, 100.0 - ((float)total_free / total_available * 100), min_free_8bit_cap, (float)min_free_8bit_cap / total_available * 100);
     printf("----------------------------------------------------------\n\n");
 }
 
 static void example_task(void* pvparams)
 {
     uint32_t size = 0;
-    const char* TAG = "example_task";
     while (1) {
         /*
          * Allocate random amount of memory for demonstration
@@ -81,7 +96,7 @@ static void example_task(void* pvparams)
                 free(ptr);
             }
         } else {
-            ESP_LOGE(TAG, "Could not allocate heap memory");
+            ESP_LOGE("example_task", "Could not allocate heap memory");
         }
 
         vTaskDelay(pdMS_TO_TICKS(2000 + size));
@@ -91,20 +106,18 @@ static void example_task(void* pvparams)
 static void waiting_task(void* pvParam)
 {
     ESP_LOGI(TAG, "Just waiting...");
-
-    int* ptr = (int*)malloc(sizeof(int) * 16);
-
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));
-        ESP_LOGI(TAG, "Still waiting... %d", *ptr);
     }
 }
 
 static void heap_tracking_task(void* pvparams)
 {
     while (1) {
-        vTaskDelay(2000);
+        vTaskDelay(5000);
+        esp_dump_per_task_stack_info();
         esp_dump_per_task_heap_info();
+        esp_dump_system_heap_info();
     }
 }
 
